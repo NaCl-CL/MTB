@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Train Book-V1</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #eef1f5; }
+  header { background: #007bff; color: white; padding: 15px; text-align: center; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { margin: 0; font-size: 1.4em; }
+  main { padding: 20px; }
+  button { padding: 8px 16px; border: none; border-radius: 8px; background: #008339; color: white; cursor: pointer; transition: 0.2s; }
+  button:hover { background: skyblue; color: white;}
+  input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-top: 5px; }
+  label { margin-top: 10px; display: block; font-weight: bold; }
+  .hidden { display: none; }
+  .record-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 20px; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); overflow: hidden; transition: 0.2s; cursor: pointer; }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .card img { width: 100%; height: 160px; object-fit: cover; }
+  .card-content { padding: 10px; }
+  .card h3 { margin: 0 0 5px; font-size: 1.1em; color: #333; }
+  .card p { margin: 4px 0; color: #555; font-size: 0.9em; }
+  .folder { background: #d9e7ff; padding: 8px 12px; border-radius: 10px; margin: 5px; cursor: pointer; display: inline-block; transition: 0.2s; }
+  .folder:hover { background: #b6d2ff; }
+  #detailPage img { max-width: 100%; border-radius: 10px; margin: 5px 0; cursor: zoom-in; }
+  #zoomModal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:none; justify-content:center; align-items:center; }
+  #zoomModal img { max-width:90%; max-height:90%; border-radius:10px; }
+  .message { text-align:center; margin:10px; color:green; font-weight:bold; }
+  .about{ color: white; background-color: rgb(107, 64, 176); display: block; margin: auto; }
+  .C{ color: #555; text-align: center; }
+  footer{ background-color: greenyellow; align-items: center; padding: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>My Train Book-V1</h1>
+  <div>
+    <button id="goToRegister">＋ 登録</button>
+    <button id="downloadPDF">PDF</button>
+    <button type=“button” onclick="location.href='Index.html'">ReadMe</button>
+    
+  </div>
+</header>
+
+<main>
+  <section id="searchPage">
+    <input type="text" id="search" placeholder="会社名・形式名・愛称・カテゴリ・タグで検索" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;">
+    <div id="folders"></div>
+    <div id="records" class="record-list"></div>
+  </section>
+
+  <section id="registerPage" class="hidden">
+    <form id="trainForm">
+      <label>会社名</label><input type="text" id="company" required>
+      <label>形式名</label><input type="text" id="model" required>
+      <label>番台</label><input type="text" id="series">
+      <label>愛称</label><input type="text" id="nickname">
+      <label>カテゴリ</label>
+      <select id="category">
+        <option value="電車">電車</option>
+        <option value="気動車">気動車</option>
+        <option value="貨車">貨車</option>
+        <option value="機関車">機関車</option>
+        <option value="事業用">事業用</option>
+        <option value="新交通">新交通</option>
+        <option value="その他">その他</option>
+      </select>
+      <label>路線タグ（カンマ区切り）</label><input type="text" id="tags" placeholder="例：山手線, 京浜東北線">
+      <label>サムネイル写真</label><input type="file" id="thumbnail" accept="image/*">
+      <label>その他写真</label><input type="file" id="photos" accept="image/*" multiple>
+      <label>メモ</label><textarea id="memo" rows="3"></textarea>
+      <button type="submit">保存</button>
+      <button type="button" id="backToSearch">戻る</button>
+      <div class="message" id="saveMsg"></div>
+    </form>
+  </section>
+
+  <section id="detailPage" class="hidden">
+    <button id="backToTop">← 戻る</button>
+    <button id="downloadDetailPDF">詳細をPDF出力</button>
+    <div id="detailContent"></div>
+  </section>
+</main>
+
+<div id="zoomModal"><img></div>
+
+<footer>
+  <p class="C">©なーくるる2025</p>
+</footer>
+
+<!-- use html2pdf (includes html2canvas and jspdf) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+<script>
+// main app script
+let trains = JSON.parse(localStorage.getItem('trains') || '[]');
+let currentFolder = null;
+
+const searchPage = document.getElementById('searchPage');
+const registerPage = document.getElementById('registerPage');
+const detailPage = document.getElementById('detailPage');
+const recordsDiv = document.getElementById('records');
+const foldersDiv = document.getElementById('folders');
+const form = document.getElementById('trainForm');
+const searchInput = document.getElementById('search');
+const goToRegister = document.getElementById('goToRegister');
+const backToSearch = document.getElementById('backToSearch');
+const backToTop = document.getElementById('backToTop');
+const detailContent = document.getElementById('detailContent');
+const zoomModal = document.getElementById('zoomModal');
+const zoomImg = zoomModal.querySelector('img');
+const downloadPDF = document.getElementById('downloadPDF');
+const downloadDetailPDF = document.getElementById('downloadDetailPDF');
+
+function showSearchPage() {
+  registerPage.classList.add('hidden');
+  detailPage.classList.add('hidden');
+  searchPage.classList.remove('hidden');
+  loadTrains();
+}
+
+function showRegisterPage() {
+  searchPage.classList.add('hidden');
+  detailPage.classList.add('hidden');
+  registerPage.classList.remove('hidden');
+  form.reset();
+}
+
+goToRegister.onclick = showRegisterPage;
+backToSearch.onclick = showSearchPage;
+backToTop.onclick = showSearchPage;
+
+// PDF: 一覧 (html2pdf を使って日本語を正しく出力)
+downloadPDF.addEventListener('click', () => {
+  try {
+    const container = document.createElement('div');
+    container.style.padding = '16px';
+    container.style.fontFamily = 'Noto Sans JP, Meiryo, Arial, sans-serif';
+    const h = document.createElement('h2'); h.textContent = 'My Train Book - 登録一覧'; container.appendChild(h);
+    trains.forEach((t, idx) => {
+      const item = document.createElement('div');
+      item.style.marginBottom = '8px';
+      item.textContent = `${idx+1}. ${t.company} ${t.model}${t.series ? '('+t.series+')' : ''} - ${t.nickname || 'なし'} (${t.category}) 登録日:${t.date || '---'}`;
+      container.appendChild(item);
+    });
+    const opt = {
+      margin: 10,
+      filename: 'MyTrainBook_List.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(container).save();
+  } catch (err) { alert('PDF生成に失敗しました: ' + (err && err.message ? err.message : err)); }
+});
+
+function loadTrains() {
+  trains = JSON.parse(localStorage.getItem('trains') || '[]');
+  renderFolders();
+  renderRecords(currentFolder ? trains.filter(t => t.company === currentFolder) : trains);
+}
+
+function renderFolders() {
+  const companies = [...new Set(trains.map(t => t.company))];
+  foldersDiv.innerHTML = companies.map(c => `<div class='folder' onclick='openFolder("${c}")'>${c}</div>`).join(' ');
+}
+
+function openFolder(company) {
+  currentFolder = company;
+  renderRecords(trains.filter(t => t.company === company));
+}
+
+function renderRecords(list = trains) {
+  recordsDiv.innerHTML = list.map((t) => {
+    const globalIndex = trains.indexOf(t);
+    return `
+    <div class='card' onclick='openDetail(${globalIndex})'>
+      ${t.thumbnail ? `<img src='${t.thumbnail}'>` : '<div style="height:160px;background:#ddd;"></div>'}
+      <div class='card-content'>
+        <h3>${t.model}${t.series ? ' ('+t.series+')' : ''}</h3>
+        <p><b>${t.company}</b> ／ ${t.category}</p>
+        <p>愛称：${t.nickname || 'なし'}</p>
+        <p>登録日：${t.date || '---'}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openDetail(index) {
+  const t = trains[index];
+  if (!t) return alert('データが見つかりません');
+  searchPage.classList.add('hidden');
+  registerPage.classList.add('hidden');
+  detailPage.classList.remove('hidden');
+  detailContent.innerHTML = `
+    <h2>${t.model}${t.series ? ' ('+t.series+')' : ''}</h2>
+    <p><b>${t.company}</b> ／ ${t.category}</p>
+    <p>愛称：${t.nickname || 'なし'}</p>
+    <p>登録日：${t.date || '---'}</p>
+    <p>路線：${t.tags ? t.tags.join(', ') : ''}</p>
+    <p>${t.memo || ''}</p>
+    ${t.thumbnail ? `<img src='${t.thumbnail}' onclick='zoomImage(this.src)'>` : ''}
+    ${t.photos && t.photos.length ? t.photos.map(p => `<img src='${p}' onclick='zoomImage(this.src)'>`).join('') : ''}
+  `;
+
+  // 詳細PDF出力（html2pdfで出力）
+  const btn = document.getElementById('downloadDetailPDF');
+  btn.onclick = () => {
+    try {
+      const clone = detailContent.cloneNode(true);
+      clone.querySelectorAll('button').forEach(b=>b.remove());
+      const opt = {
+        margin: 10,
+        filename: `${(t.model||'detail').replace(/\s+/g,'_')}_Detail.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      html2pdf().set(opt).from(clone).save();
+    } catch(err) { alert('詳細PDF生成に失敗しました: ' + (err && err.message ? err.message : err)); }
+  };
+}
+
+function zoomImage(src) {
+  zoomImg.src = src;
+  zoomModal.style.display = 'flex';
+}
+zoomModal.onclick = () => zoomModal.style.display = 'none';
+
+form.addEventListener('submit', e => {
+  e.preventDefault();
+  const readerThumb = new FileReader();
+  const thumbFile = document.getElementById('thumbnail').files[0];
+  const photos = document.getElementById('photos').files;
+
+  const date = new Date().toLocaleDateString('ja-JP');
+  const train = {
+    company: document.getElementById('company').value,
+    model: document.getElementById('model').value,
+    series: document.getElementById('series').value,
+    nickname: document.getElementById('nickname').value,
+    category: document.getElementById('category').value,
+    tags: document.getElementById('tags').value.split(',').map(s => s.trim()).filter(Boolean),
+    memo: document.getElementById('memo').value,
+    thumbnail: '',
+    photos: [],
+    date: date
+  };
+
+  const saveTrain = () => {
+    trains.push(train);
+    localStorage.setItem('trains', JSON.stringify(trains));
+    document.getElementById('saveMsg').innerText = '保存しました！';
+    setTimeout(() => showSearchPage(), 800);
+  };
+
+  if (thumbFile) {
+    readerThumb.onload = () => {
+      train.thumbnail = readerThumb.result;
+      if (photos.length) {
+        let loaded = 0;
+        for (let p of photos) {
+          const r = new FileReader();
+          r.onload = () => {
+            train.photos.push(r.result);
+            if (++loaded === photos.length) saveTrain();
+          };
+          r.readAsDataURL(p);
+        }
+      } else saveTrain();
+    };
+    readerThumb.readAsDataURL(thumbFile);
+  } else saveTrain();
+});
+
+searchInput.addEventListener('input', () => {
+  const keyword = searchInput.value.trim().toLowerCase();
+  if (!keyword) return renderRecords(currentFolder ? trains.filter(t => t.company === currentFolder) : trains);
+  const result = trains.filter(t =>
+    (t.company && t.company.toLowerCase().includes(keyword)) ||
+    (t.model && t.model.toLowerCase().includes(keyword)) ||
+    (t.nickname && t.nickname.toLowerCase().includes(keyword)) ||
+    (t.category && t.category.toLowerCase().includes(keyword)) ||
+    (t.tags && t.tags.some(tag => tag.toLowerCase().includes(keyword)))
+  );
+  renderRecords(result);
+});
+
+loadTrains();
+</script>
+</body>
+</html>
