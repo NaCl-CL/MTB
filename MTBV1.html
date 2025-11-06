@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Train Book-V1</title>
+<title>My Train Book</title>
 <style>
   body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #eef1f5; }
   header { background: #007bff; color: white; padding: 15px; text-align: center; display: flex; justify-content: space-between; align-items: center; }
@@ -34,12 +34,11 @@
 </head>
 <body>
 <header>
-  <h1>My Train Book-V1</h1>
+  <h1>My Train Book</h1>
   <div>
     <button id="goToRegister">＋ 登録</button>
-    <button id="downloadPDF">PDF</button>
+    <button id="downloadPDF">PDFダウンロード</button>
     <button type=“button” onclick="location.href='index.html'">ReadMe</button>
-    
   </div>
 </header>
 
@@ -68,7 +67,7 @@
       </select>
       <label>路線タグ（カンマ区切り）</label><input type="text" id="tags" placeholder="例：山手線, 京浜東北線">
       <label>サムネイル写真</label><input type="file" id="thumbnail" accept="image/*">
-      <label>その他写真</label><input type="file" id="photos" accept="image/*" multiple>
+      <label>その他写真（追加可能）</label><input type="file" id="photos" accept="image/*" multiple>
       <label>メモ</label><textarea id="memo" rows="3"></textarea>
       <button type="submit">保存</button>
       <button type="button" id="backToSearch">戻る</button>
@@ -78,6 +77,7 @@
 
   <section id="detailPage" class="hidden">
     <button id="backToTop">← 戻る</button>
+    <button id="editBtn">編集</button>
     <button id="downloadDetailPDF">詳細をPDF出力</button>
     <div id="detailContent"></div>
   </section>
@@ -89,12 +89,11 @@
   <p class="C">©なーくるる2025</p>
 </footer>
 
-<!-- use html2pdf (includes html2canvas and jspdf) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 <script>
-// main app script
 let trains = JSON.parse(localStorage.getItem('trains') || '[]');
 let currentFolder = null;
+let editIndex = null; // 編集モード時に利用
 
 const searchPage = document.getElementById('searchPage');
 const registerPage = document.getElementById('registerPage');
@@ -107,10 +106,28 @@ const goToRegister = document.getElementById('goToRegister');
 const backToSearch = document.getElementById('backToSearch');
 const backToTop = document.getElementById('backToTop');
 const detailContent = document.getElementById('detailContent');
+const editBtn = document.getElementById('editBtn');
 const zoomModal = document.getElementById('zoomModal');
 const zoomImg = zoomModal.querySelector('img');
 const downloadPDF = document.getElementById('downloadPDF');
 const downloadDetailPDF = document.getElementById('downloadDetailPDF');
+
+goToRegister.onclick = () => { editIndex = null; showRegisterPage(); };
+backToSearch.onclick = showSearchPage;
+backToTop.onclick = showSearchPage;
+
+// PDF一覧
+ downloadPDF.onclick = () => {
+  const container = document.createElement('div');
+  container.style.padding = '16px';
+  container.innerHTML = '<h2>My Train Book - 登録一覧</h2>';
+  trains.forEach((t,i)=>{
+    const d = document.createElement('div');
+    d.textContent = `${i+1}. ${t.company} ${t.model}${t.series? '('+t.series+')':''} - ${t.nickname||'なし'} (${t.category}) 登録日:${t.date||'---'}`;
+    container.appendChild(d);
+  });
+  html2pdf().from(container).save('MyTrainBook_List.pdf');
+};
 
 function showSearchPage() {
   registerPage.classList.add('hidden');
@@ -123,36 +140,7 @@ function showRegisterPage() {
   searchPage.classList.add('hidden');
   detailPage.classList.add('hidden');
   registerPage.classList.remove('hidden');
-  form.reset();
 }
-
-goToRegister.onclick = showRegisterPage;
-backToSearch.onclick = showSearchPage;
-backToTop.onclick = showSearchPage;
-
-// PDF: 一覧 (html2pdf を使って日本語を正しく出力)
-downloadPDF.addEventListener('click', () => {
-  try {
-    const container = document.createElement('div');
-    container.style.padding = '16px';
-    container.style.fontFamily = 'Noto Sans JP, Meiryo, Arial, sans-serif';
-    const h = document.createElement('h2'); h.textContent = 'My Train Book - 登録一覧'; container.appendChild(h);
-    trains.forEach((t, idx) => {
-      const item = document.createElement('div');
-      item.style.marginBottom = '8px';
-      item.textContent = `${idx+1}. ${t.company} ${t.model}${t.series ? '('+t.series+')' : ''} - ${t.nickname || 'なし'} (${t.category}) 登録日:${t.date || '---'}`;
-      container.appendChild(item);
-    });
-    const opt = {
-      margin: 10,
-      filename: 'MyTrainBook_List.pdf',
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().set(opt).from(container).save();
-  } catch (err) { alert('PDF生成に失敗しました: ' + (err && err.message ? err.message : err)); }
-});
 
 function loadTrains() {
   trains = JSON.parse(localStorage.getItem('trains') || '[]');
@@ -203,29 +191,26 @@ function openDetail(index) {
     ${t.photos && t.photos.length ? t.photos.map(p => `<img src='${p}' onclick='zoomImage(this.src)'>`).join('') : ''}
   `;
 
-  // 詳細PDF出力（html2pdfで出力）
-  const btn = document.getElementById('downloadDetailPDF');
-  btn.onclick = () => {
-    try {
-      const clone = detailContent.cloneNode(true);
-      clone.querySelectorAll('button').forEach(b=>b.remove());
-      const opt = {
-        margin: 10,
-        filename: `${(t.model||'detail').replace(/\s+/g,'_')}_Detail.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-      html2pdf().set(opt).from(clone).save();
-    } catch(err) { alert('詳細PDF生成に失敗しました: ' + (err && err.message ? err.message : err)); }
+  editBtn.onclick = () => startEdit(index);
+
+  downloadDetailPDF.onclick = () => {
+    const clone = detailContent.cloneNode(true);
+    html2pdf().from(clone).save(`${t.model}_Detail.pdf`);
   };
 }
 
-function zoomImage(src) {
-  zoomImg.src = src;
-  zoomModal.style.display = 'flex';
+function startEdit(index) {
+  const t = trains[index];
+  editIndex = index;
+  document.getElementById('company').value = t.company;
+  document.getElementById('model').value = t.model;
+  document.getElementById('series').value = t.series;
+  document.getElementById('nickname').value = t.nickname;
+  document.getElementById('category').value = t.category;
+  document.getElementById('tags').value = t.tags.join(', ');
+  document.getElementById('memo').value = t.memo;
+  showRegisterPage();
 }
-zoomModal.onclick = () => zoomModal.style.display = 'none';
 
 form.addEventListener('submit', e => {
   e.preventDefault();
@@ -234,7 +219,7 @@ form.addEventListener('submit', e => {
   const photos = document.getElementById('photos').files;
 
   const date = new Date().toLocaleDateString('ja-JP');
-  const train = {
+  let train = {
     company: document.getElementById('company').value,
     model: document.getElementById('model').value,
     series: document.getElementById('series').value,
@@ -248,7 +233,16 @@ form.addEventListener('submit', e => {
   };
 
   const saveTrain = () => {
-    trains.push(train);
+    if (editIndex !== null) {
+      const existing = trains[editIndex];
+      if (!train.thumbnail) train.thumbnail = existing.thumbnail;
+      train.photos = existing.photos.concat(train.photos);
+      train.date = existing.date || train.date;
+      trains[editIndex] = train;
+      editIndex = null;
+    } else {
+      trains.push(train);
+    }
     localStorage.setItem('trains', JSON.stringify(trains));
     document.getElementById('saveMsg').innerText = '保存しました！';
     setTimeout(() => showSearchPage(), 800);
@@ -270,8 +264,26 @@ form.addEventListener('submit', e => {
       } else saveTrain();
     };
     readerThumb.readAsDataURL(thumbFile);
-  } else saveTrain();
+  } else {
+    if (photos.length) {
+      let loaded = 0;
+      for (let p of photos) {
+        const r = new FileReader();
+        r.onload = () => {
+          train.photos.push(r.result);
+          if (++loaded === photos.length) saveTrain();
+        };
+        r.readAsDataURL(p);
+      }
+    } else saveTrain();
+  }
 });
+
+function zoomImage(src) {
+  zoomImg.src = src;
+  zoomModal.style.display = 'flex';
+}
+zoomModal.onclick = () => zoomModal.style.display = 'none';
 
 searchInput.addEventListener('input', () => {
   const keyword = searchInput.value.trim().toLowerCase();
